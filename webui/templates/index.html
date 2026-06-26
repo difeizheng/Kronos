@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kronos Financial Prediction Web UI</title>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <title>Kronos 金融预测系统</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -422,7 +423,281 @@
         .model-info strong {
             color: #0f2027;
         }
-
+        
+        /* History Panel Styles */
+        .history-panel {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .history-panel h2 {
+            color: #4a5568;
+            margin-bottom: 20px;
+        }
+        
+        .history-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .history-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .history-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .history-item:hover {
+            background: #f7fafc;
+        }
+        
+        .history-item.selected {
+            background: #e6fffa;
+            border-color: #48bb78;
+        }
+        
+        .history-item-checkbox {
+            margin-right: 12px;
+        }
+        
+        .history-item-info {
+            flex: 1;
+        }
+        
+        .history-item-title {
+            font-weight: 600;
+            color: #2d3748;
+        }
+        
+        .history-item-meta {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 4px;
+        }
+        
+        .history-item-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .history-item-actions button {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+        
+        /* LLM Panel Styles */
+        .llm-panel {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .llm-panel h2 {
+            color: #4a5568;
+            margin-bottom: 20px;
+        }
+        
+        .llm-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .analysis-content {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            white-space: pre-wrap;
+            line-height: 1.6;
+            color: #2d3748;
+        }
+        
+        .chat-history {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        
+        .chat-message {
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+        }
+        
+        .chat-message.user {
+            background: #667eea;
+            color: white;
+            text-align: right;
+        }
+        
+        .chat-message.assistant {
+            background: #e2e8f0;
+            color: #2d3748;
+        }
+        
+        /* Markdown渲染样式 */
+        .analysis-content, .chat-message.assistant {
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .analysis-content h1, .analysis-content h2, .analysis-content h3,
+        .analysis-content h4, .analysis-content h5, .analysis-content h6 {
+            margin-top: 16px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .analysis-content h1 { font-size: 20px; color: #1a202c; }
+        .analysis-content h2 { font-size: 18px; color: #2d3748; }
+        .analysis-content h3 { font-size: 16px; color: #4a5568; }
+        
+        .analysis-content p {
+            margin-bottom: 12px;
+        }
+        
+        .analysis-content ul, .analysis-content ol {
+            margin-left: 20px;
+            margin-bottom: 12px;
+        }
+        
+        .analysis-content li {
+            margin-bottom: 4px;
+        }
+        
+        .analysis-content strong {
+            color: #1a202c;
+            font-weight: 600;
+        }
+        
+        .analysis-content code {
+            background: #edf2f7;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        
+        .analysis-content pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 12px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin-bottom: 12px;
+        }
+        
+        .analysis-content pre code {
+            background: transparent;
+            color: inherit;
+        }
+        
+        .analysis-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 12px;
+        }
+        
+        .analysis-content th, .analysis-content td {
+            border: 1px solid #e2e8f0;
+            padding: 8px;
+            text-align: left;
+        }
+        
+        .analysis-content th {
+            background: #f7fafc;
+            font-weight: 600;
+        }
+        
+        .analysis-content blockquote {
+            border-left: 4px solid #667eea;
+            padding-left: 12px;
+            margin-left: 0;
+            color: #4a5568;
+        }
+        
+        /* 可折叠面板样式 */
+        .collapsible-panel {
+            margin-bottom: 16px;
+        }
+        
+        .collapsible-header {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px 16px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+        
+        .collapsible-header:hover {
+            background: #edf2f7;
+        }
+        
+        .collapsible-header h4 {
+            margin: 0;
+            color: #2d3748;
+            font-size: 14px;
+        }
+        
+        .collapsible-toggle {
+            font-size: 12px;
+            color: #667eea;
+        }
+        
+        .collapsible-content {
+            border: 1px solid #e2e8f0;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            padding: 16px;
+            background: white;
+            display: none;
+            max-height: 2000px;
+            overflow-y: auto;
+        }
+        
+        .collapsible-content.expanded {
+            display: block;
+        }
+        
+        .analysis-content {
+            padding: 0;
+        }
+        
+        .chat-input-area {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .chat-input-area input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+        }
+        
         @media (max-width: 768px) {
             .main-content {
                 grid-template-columns: 1fr;
@@ -441,79 +716,79 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚀 Kronos Financial Prediction Web UI</h1>
-            <p>AI-based financial K-line data prediction analysis platform</p>
+            <h1>Kronos 金融K线预测系统</h1>
+            <p>基于AI的金融数据分析与预测平台</p>
         </div>
 
         <div class="main-content">
             <div class="control-panel">
-                <h2>🎯 Control Panel</h2>
+                <h2>控制面板</h2>
 
                 <!-- Model Selection -->
                 <div class="form-group">
-                    <label for="model-select">Select Model:</label>
+                    <label for="model-select">选择模型：</label>
                     <select id="model-select">
-                        <option value="">Please load available models first</option>
+                        <option value="">请先加载可用模型</option>
                     </select>
-                    <small class="form-text">Select the Kronos model to use</small>
+                    <small class="form-text">选择要使用的Kronos模型</small>
                 </div>
 
                 <!-- Device Selection -->
                 <div class="form-group">
-                    <label for="device-select">Select Device:</label>
+                    <label for="device-select">选择设备：</label>
                     <select id="device-select">
                         <option value="cpu">CPU</option>
-                        <option value="cuda">CUDA (NVIDIA GPU)</option>
-                        <option value="mps">MPS (Apple Silicon)</option>
+                        <option value="cuda">CUDA (NVIDIA显卡)</option>
+                        <option value="mps">MPS (Apple芯片)</option>
                     </select>
-                    <small class="form-text">Select the device to run the model on</small>
+                    <small class="form-text">选择模型运行设备</small>
                 </div>
 
                 <!-- Model Status -->
                 <div id="model-status" class="status info" style="display: none;">
-                    Model status information
+                    模型状态信息
                 </div>
 
                 <!-- Load Model Button -->
                 <button id="load-model-btn" class="btn btn-secondary">
-                    🔄 Load Model
+                    加载模型
                 </button>
 
                 <hr style="margin: 20px 0; border: 1px solid #e2e8f0;">
 
                 <!-- Data File Selection -->
                 <div class="form-group">
-                    <label for="data-file-select">Select Data File:</label>
+                    <label for="data-file-select">选择数据文件：</label>
                     <select id="data-file-select">
-                        <option value="">Please load data file list first</option>
+                        <option value="">请先加载数据文件列表</option>
                     </select>
-                    <small class="form-text">Select K-line data file from data directory</small>
+                    <small class="form-text">从数据目录选择K线数据文件</small>
                 </div>
 
                 <button id="load-data-btn" class="btn btn-secondary">
-                    📁 Load Data
+                    加载数据
                 </button>
 
                 <!-- Data Information Display -->
                 <div id="data-info" class="data-info" style="display: none;">
-                    <h3>📊 Data Information</h3>
-                    <p><strong>Rows:</strong> <span id="data-rows">-</span></p>
-                    <p><strong>Columns:</strong> <span id="data-cols">-</span></p>
-                    <p><strong>Time Range:</strong> <span id="data-time-range">-</span></p>
-                    <p><strong>Price Range:</strong> <span id="data-price-range">-</span></p>
-                    <p><strong>Time Frequency:</strong> <span id="data-timeframe">-</span></p>
-                    <p><strong>Prediction Columns:</strong> <span id="data-prediction-cols">-</span></p>
+                    <h3>数据信息</h3>
+                    <p><strong>数据行数：</strong> <span id="data-rows">-</span></p>
+                    <p><strong>数据列数：</strong> <span id="data-cols">-</span></p>
+                    <p><strong>时间范围：</strong> <span id="data-time-range">-</span></p>
+                    <p><strong>价格范围：</strong> <span id="data-price-range">-</span></p>
+                    <p><strong>时间频率：</strong> <span id="data-timeframe">-</span></p>
+                    <p><strong>预测列：</strong> <span id="data-prediction-cols">-</span></p>
                 </div>
 
                 <hr style="margin: 20px 0; border: 1px solid #e2e8f0;">
 
                 <!-- Time Window Selector -->
                 <div class="time-window-container">
-                    <h3>⏰ Time Window Selection</h3>
+                    <h3>时间窗口选择</h3>
                     <div class="time-window-info">
-                        <span id="window-start">Start: --</span>
-                        <span id="window-end">End: --</span>
-                        <span id="window-size">Window Size: 400+120=520 data points</span>
+                        <span id="window-start">开始: --</span>
+                        <span id="window-end">结束: --</span>
+                        <span id="window-size">窗口大小: 200+60 数据点</span>
                     </div>
                     
                     <div class="time-window-slider">
@@ -523,109 +798,220 @@
                             <div class="slider-handle end-handle" id="end-handle"></div>
                         </div>
                         <div class="slider-labels">
-                            <span id="min-label">Earliest</span>
-                            <span id="max-label">Latest</span>
+                            <span id="min-label">最早</span>
+                            <span id="max-label">最新</span>
                         </div>
                     </div>
                     
-                    <small class="form-text">Drag slider to select time window position for 520 data points, green area represents fixed 400+120 data point range</small>
+                    <small class="form-text">拖动滑块选择时间窗口位置，绿色区域表示选中的历史+预测范围</small>
+                </div>
+
+                <!-- Prediction Mode Selection -->
+                <div class="form-group">
+                    <label for="prediction-mode">预测模式：</label>
+                    <select id="prediction-mode">
+                        <option value="future">预测未来（基于最新数据）</option>
+                        <option value="historical">历史对比（验证模型准确性）</option>
+                    </select>
+                    <small class="form-text">预测未来：用最新数据预测未知走势；历史对比：用历史数据验证模型效果</small>
                 </div>
 
                 <!-- Prediction Parameters -->
                 <div class="form-group">
-                    <label for="lookback">Lookback Window Size:</label>
-                    <input type="number" id="lookback" value="400" readonly>
-                    <small class="form-text">Fixed at 400 data points</small>
+                    <label for="lookback">回看窗口大小：</label>
+                    <input type="number" id="lookback" value="200">
+                    <small class="form-text">用于预测的历史数据点数（建议200-400）</small>
                 </div>
 
                 <div class="form-group">
-                    <label for="pred-len">Prediction Length:</label>
-                    <input type="number" id="pred-len" value="120" readonly>
-                    <small class="form-text">Fixed at 120 data points</small>
+                    <label for="pred-len">预测长度：</label>
+                    <input type="number" id="pred-len" value="60">
+                    <small class="form-text">要预测的未来数据点数（建议60-120）</small>
                 </div>
 
                 <!-- Prediction Quality Parameters -->
                 <div class="form-group">
-                    <label for="temperature">Prediction Temperature (T):</label>
+                    <label for="temperature">预测温度 (T)：</label>
                     <input type="range" id="temperature" value="1.0" min="0.1" max="2.0" step="0.1">
                     <span id="temperature-value">1.0</span>
-                    <small class="form-text">Controls prediction randomness, higher values make predictions more diverse, lower values make predictions more conservative</small>
+                    <small class="form-text">控制预测随机性，值越高预测越多样化，值越低预测越保守</small>
                 </div>
 
                 <div class="form-group">
-                    <label for="top-p">Nucleus Sampling Parameter (top_p):</label>
+                    <label for="top-p">核采样参数 (top_p)：</label>
                     <input type="range" id="top-p" value="0.9" min="0.1" max="1.0" step="0.1">
                     <span id="top-p-value">0.9</span>
-                    <small class="form-text">Controls prediction diversity, higher values consider broader probability distributions</small>
+                    <small class="form-text">控制预测多样性，值越高考虑更广的概率分布</small>
                 </div>
 
                 <div class="form-group">
-                    <label for="sample-count">Sample Count:</label>
+                    <label for="sample-count">采样次数：</label>
                     <input type="number" id="sample-count" value="1" min="1" max="5" step="1">
-                    <small class="form-text">Generate multiple prediction samples to improve quality (recommended 1-3)</small>
+                    <small class="form-text">生成多个预测样本以提高质量（建议1-3次）</small>
                 </div>
 
                 <button id="predict-btn" class="btn btn-success" disabled>
-                    🔮 Start Prediction
+                    开始预测
                 </button>
 
                 <!-- Loading Status -->
                 <div id="loading" class="loading">
                     <div class="spinner"></div>
-                    <p>Processing, please wait...</p>
+                    <p>正在处理，请稍候...</p>
                 </div>
             </div>
 
             <div class="chart-container">
-                <h2>📈 Prediction Results Chart</h2>
+                <h2>预测结果图表</h2>
                 <div id="chart"></div>
                 
-                <!-- Comparison Analysis -->
+                <!-- Prediction Results Table (for future prediction) -->
+                <div id="prediction-table-section" class="comparison-section" style="display: none;">
+                    <h3>预测数据列表</h3>
+                    <div id="prediction-table-info" class="comparison-info">
+                        <p><strong>预测类型：</strong> <span id="future-prediction-type">-</span></p>
+                        <p><strong>预测时间范围：</strong> <span id="prediction-time-range">-</span></p>
+                    </div>
+                    
+                    <div class="error-details">
+                        <h4>详细预测数据：</h4>
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            <table class="comparison-table">
+                                <thead>
+                                    <tr>
+                                        <th>序号</th>
+                                        <th>预测日期</th>
+                                        <th>开盘价</th>
+                                        <th>最高价</th>
+                                        <th>最低价</th>
+                                        <th>收盘价</th>
+                                        <th>涨跌幅</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="prediction-tbody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Comparison Analysis (for historical comparison) -->
                 <div id="comparison-section" class="comparison-section" style="display: none;">
-                    <h3>📊 Prediction vs Actual Data Comparison</h3>
+                    <h3>预测与实际数据对比</h3>
                     <div id="comparison-info" class="comparison-info">
-                        <p><strong>Prediction Type:</strong> <span id="prediction-type">-</span></p>
-                        <p><strong>Comparison Data:</strong> <span id="comparison-data">-</span></p>
+                        <p><strong>预测类型：</strong> <span id="prediction-type">-</span></p>
+                        <p><strong>对比数据：</strong> <span id="comparison-data">-</span></p>
                     </div>
                     
                     <div class="error-stats">
                         <div class="error-stat">
-                            <h4>Mean Absolute Error</h4>
+                            <h4>平均绝对误差</h4>
                             <div class="value" id="mae">-</div>
-                            <div class="unit">Price Units</div>
+                            <div class="unit">价格单位</div>
                         </div>
                         <div class="error-stat">
-                            <h4>Root Mean Square Error</h4>
+                            <h4>均方根误差</h4>
                             <div class="value" id="rmse">-</div>
-                            <div class="unit">Price Units</div>
+                            <div class="unit">价格单位</div>
                         </div>
                         <div class="error-stat">
-                            <h4>Mean Absolute Percentage Error</h4>
+                            <h4>平均绝对百分比误差</h4>
                             <div class="value" id="mape">-</div>
                             <div class="unit">%</div>
                         </div>
                     </div>
                     
                     <div class="error-details">
-                        <h4>Detailed Comparison Data:</h4>
+                        <h4>详细对比数据：</h4>
                         <div style="max-height: 300px; overflow-y: auto;">
                             <table class="comparison-table">
                                 <thead>
                                     <tr>
-                                        <th>Time</th>
-                                        <th>Actual Open</th>
-                                        <th>Predicted Open</th>
-                                        <th>Actual High</th>
-                                        <th>Predicted High</th>
-                                        <th>Actual Low</th>
-                                        <th>Predicted Low</th>
-                                        <th>Actual Close</th>
-                                        <th>Predicted Close</th>
+                                        <th>时间</th>
+                                        <th>实际开盘</th>
+                                        <th>预测开盘</th>
+                                        <th>实际最高</th>
+                                        <th>预测最高</th>
+                                        <th>实际最低</th>
+                                        <th>预测最低</th>
+                                        <th>实际收盘</th>
+                                        <th>预测收盘</th>
                                     </tr>
                                 </thead>
                                 <tbody id="comparison-tbody">
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Prediction History Panel -->
+        <div class="history-panel" id="history-panel" style="margin-top: 30px;">
+            <h2>预测历史记录</h2>
+            <div class="history-controls">
+                <button id="load-history-btn" class="btn btn-secondary">刷新历史</button>
+                <button id="compare-btn" class="btn btn-primary" disabled>对比选中项</button>
+                <small class="form-text">选择多条记录进行对比分析</small>
+            </div>
+            <div id="history-list" class="history-list">
+                <p>暂无历史记录</p>
+            </div>
+        </div>
+        
+        <!-- Comparison Chart -->
+        <div id="comparison-chart-section" style="display: none; margin-top: 30px;">
+            <h2>预测对比图表</h2>
+            <div id="comparison-chart"></div>
+            <div id="comparison-table-section" class="comparison-section">
+                <h3>对比数据详情</h3>
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <table class="comparison-table" id="comparison-detail-table">
+                        <thead id="comparison-detail-head"></thead>
+                        <tbody id="comparison-detail-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- LLM Analysis Panel -->
+        <div class="llm-panel" id="llm-panel" style="margin-top: 30px; display: none;">
+            <h2>AI金融分析</h2>
+            <div id="llm-status" class="status info">
+                <p>LLM状态：<span id="llm-available-status">检测中...</span></p>
+            </div>
+            
+            <div class="llm-controls">
+                <select id="llm-analysis-type">
+                    <option value="trend">趋势分析</option>
+                    <option value="parameter">参数影响分析</option>
+                </select>
+                <button id="llm-analyze-btn" class="btn btn-primary" disabled>开始分析</button>
+            </div>
+            
+            <div id="llm-analysis-result" style="display: none;">
+                <div class="collapsible-panel">
+                    <div class="collapsible-header" onclick="toggleAnalysisPanel()">
+                        <h4>📊 分析结果</h4>
+                        <span class="collapsible-toggle" id="analysis-toggle">展开 ▼</span>
+                    </div>
+                    <div class="collapsible-content expanded" id="llm-analysis-content"></div>
+                </div>
+            </div>
+            
+            <!-- LLM Chat Section -->
+            <div id="llm-chat-section" style="margin-top: 20px;">
+                <div class="collapsible-panel">
+                    <div class="collapsible-header" onclick="toggleChatPanel()">
+                        <h4>💬 AI对话</h4>
+                        <span class="collapsible-toggle" id="chat-toggle">展开 ▼</span>
+                    </div>
+                    <div class="collapsible-content expanded" id="llm-chat-content">
+                        <div id="llm-chat-history" class="chat-history"></div>
+                        <div class="chat-input-area">
+                            <input type="text" id="llm-chat-input" placeholder="输入问题，如：预测的上涨趋势是否可靠？">
+                            <button id="llm-chat-send-btn" class="btn btn-primary" disabled>发送</button>
                         </div>
                     </div>
                 </div>
@@ -639,6 +1025,10 @@
         let currentDataInfo = null;
         let availableModels = [];
         let modelLoaded = false;
+        let predictionHistory = [];
+        let selectedHistoryItems = [];
+        let currentPredictionId = null;
+        let llmAvailable = false;
 
         // Initialize after page loads
         document.addEventListener('DOMContentLoaded', function() {
@@ -647,21 +1037,16 @@
 
         // Initialize application
         async function initializeApp() {
-            console.log('🚀 Initializing Kronos Web UI...');
+            console.log('Initializing Kronos Web UI...');
             
-            // Load available models
             await loadAvailableModels();
-            
-            // Load data file list
             await loadDataFiles();
-            
-            // Set up event listeners
             setupEventListeners();
-            
-            // Initialize time slider
             initializeTimeSlider();
+            await loadPredictionHistory();
+            await checkLLMStatus();
             
-            console.log('✅ Application initialization completed');
+            console.log('Application initialization completed');
         }
 
         // Load available models
@@ -908,8 +1293,10 @@
             const startHandle = document.getElementById('start-handle');
             const selection = document.getElementById('slider-selection');
             
-            // Fixed window size of 520 data points
-            const windowSize = 520;
+            // Get window size from input fields
+            const lookback = parseInt(document.getElementById('lookback').value) || 200;
+            const predLen = parseInt(document.getElementById('pred-len').value) || 60;
+            const windowSize = lookback + predLen;
             const totalRows = sliderData ? sliderData.totalRows : 1000;
             const windowPercentage = windowSize / totalRows;
             
@@ -932,8 +1319,10 @@
             const endHandle = document.getElementById('end-handle');
             const selection = document.getElementById('slider-selection');
             
-            // Fixed window size of 520 data points
-            const windowSize = 520;
+            // Get window size from input fields
+            const lookback = parseInt(document.getElementById('lookback').value) || 200;
+            const predLen = parseInt(document.getElementById('pred-len').value) || 60;
+            const windowSize = lookback + predLen;
             const totalRows = sliderData ? sliderData.totalRows : 1000;
             const windowPercentage = windowSize / totalRows;
             
@@ -973,22 +1362,20 @@
             document.getElementById('window-start').textContent = `Start: ${startDate.toLocaleDateString()}`;
             document.getElementById('window-end').textContent = `End: ${endDate.toLocaleDateString()}`;
             
-            // Display fixed window size
-            document.getElementById('window-size').textContent = `Window Size: 400 + 120 = 520 data points (fixed)`;
-            
-            // Input field values remain fixed
-            document.getElementById('lookback').value = 400;
-            document.getElementById('pred-len').value = 120;
+            // Display dynamic window size
+            const lookback = parseInt(document.getElementById('lookback').value) || 200;
+            const predLen = parseInt(document.getElementById('pred-len').value) || 60;
+            document.getElementById('window-size').textContent = `Window Size: ${lookback} + ${predLen} = ${lookback + predLen} data points`;
         }
 
-        // Update slider based on input fields
+// Update slider based on input fields
         function updateSliderFromInputs() {
             if (!sliderData) return;
             
-            // Fixed window size: 400 + 120 = 520 data points
-            const lookback = 400;
-            const predLen = 120;
-            const windowSize = lookback + predLen; // Fixed at 520
+            // Get window size from input fields
+            const lookback = parseInt(document.getElementById('lookback').value) || 200;
+            const predLen = parseInt(document.getElementById('pred-len').value) || 60;
+            const windowSize = lookback + predLen;
             
             // Calculate slider position
             const totalRows = sliderData.totalRows;
@@ -999,13 +1386,12 @@
                 return;
             }
             
-            // Calculate slider position (default select first half of data)
-            const startPercentage = 0.1; // Start from 10%
-            const endPercentage = startPercentage + (windowSize / totalRows);
+            // Calculate slider position (default start from beginning)
+            const startPercentage = 0;
+            const windowPercentage = windowSize / totalRows;
             
-            // Update handle positions
+// Update handle positions
             updateStartHandle(startPercentage);
-            updateEndHandle(endPercentage);
             
             // Update display information
             updateSliderFromHandles();
@@ -1031,12 +1417,12 @@
         // Start prediction
         async function startPrediction() {
             if (!currentDataFile) {
-                showStatus('error', 'Please load data file first');
+                showStatus('error', '请先加载数据文件');
                 return;
             }
             
             if (!modelLoaded) {
-                showStatus('error', 'Please load model first');
+                showStatus('error', '请先加载模型');
                 return;
             }
             
@@ -1046,20 +1432,7 @@
                 
                 const lookback = parseInt(document.getElementById('lookback').value);
                 const predLen = parseInt(document.getElementById('pred-len').value);
-                
-                // Get selected time range from time window slider
-                const startHandle = document.getElementById('start-handle');
-                const startPercentage = parseFloat(startHandle.style.left) / 100;
-                
-                if (!sliderData) {
-                    showStatus('error', 'Time window slider not initialized');
-                    return;
-                }
-                
-                // Calculate selected time range
-                const totalTime = sliderData.endDate.getTime() - sliderData.startDate.getTime();
-                const startTime = sliderData.startDate.getTime() + (totalTime * startPercentage);
-                const startDate = new Date(startTime);
+                const predictionMode = document.getElementById('prediction-mode').value;
                 
                 // Get prediction quality parameters
                 const temperature = parseFloat(document.getElementById('temperature').value);
@@ -1070,26 +1443,47 @@
                     file_path: currentDataFile,
                     lookback: lookback,
                     pred_len: predLen,
-                    start_date: startDate.toISOString().slice(0, 16), // Format as YYYY-MM-DDTHH:MM
+                    prediction_mode: predictionMode,
                     temperature: temperature,
                     top_p: topP,
                     sample_count: sampleCount
                 };
                 
-                console.log('🚀 Starting prediction, parameters:', predictionParams);
+                // If historical comparison mode, add start_date from slider
+                if (predictionMode === 'historical') {
+                    const startHandle = document.getElementById('start-handle');
+                    const startPercentage = parseFloat(startHandle.style.left) / 100;
+                    
+                    if (!sliderData) {
+                        showStatus('error', '时间窗口滑块未初始化');
+                        return;
+                    }
+                    
+                    const totalTime = sliderData.endDate.getTime() - sliderData.startDate.getTime();
+                    const startTime = sliderData.startDate.getTime() + (totalTime * startPercentage);
+                    const startDate = new Date(startTime);
+                    predictionParams.start_date = startDate.toISOString().slice(0, 16);
+                } else {
+                    predictionParams.start_date = '';  // Empty means use latest data for future prediction
+                }
+                
+                console.log('预测参数:', predictionParams);
+                console.log('预测模式:', predictionMode === 'future' ? '预测未来' : '历史对比');
                 
                 const response = await axios.post('/api/predict', predictionParams);
                 
+                console.log('API响应完整数据:', response.data);
+                
                 if (response.data.success) {
                     // Display prediction results
-                    displayPredictionResult(response.data);
+                    displayPredictionResult(response.data, predictionMode);
                     showStatus('success', response.data.message);
                 } else {
-                    showStatus('error', response.data.error);
+                    showStatus('error', response.data.error || '未知错误');
                 }
             } catch (error) {
-                console.error('❌ Prediction failed:', error);
-                showStatus('error', `Prediction failed: ${error.response?.data?.error || error.message}`);
+                console.error('预测失败:', error);
+                showStatus('error', `预测失败: ${error.response?.data?.error || error.message}`);
             } finally {
                 showLoading(false);
                 document.getElementById('predict-btn').disabled = false;
@@ -1097,16 +1491,104 @@
         }
 
         // Display prediction results
-        function displayPredictionResult(result) {
-            // Display chart
-            const chartData = JSON.parse(result.chart);
-            Plotly.newPlot('chart', chartData.data, chartData.layout);
+        function displayPredictionResult(result, predictionMode) {
+            console.log('=== 开始显示预测结果 ===', result);
             
-            // Display comparison analysis (if actual data exists)
-            if (result.has_comparison) {
-                displayComparisonAnalysis(result);
-            } else {
-                document.getElementById('comparison-section').style.display = 'none';
+            if (!result.chart) {
+                showStatus('error', '图表数据缺失');
+                return;
+            }
+            
+            // 兼容两种数据格式：新预测用 prediction_results，历史记录用 predictions_data
+            const predictions = result.prediction_results || result.predictions_data || [];
+            
+            if (predictions.length === 0) {
+                showStatus('error', '预测结果为空');
+                return;
+            }
+            
+            // 统一数据格式
+            if (!result.prediction_results) {
+                result.prediction_results = predictions;
+            }
+            
+            // 判断是否有对比数据
+            const actualData = result.actual_data || [];
+            result.has_comparison = actualData.length > 0;
+            
+            // Save prediction ID if available
+            if (result.id) {
+                currentPredictionId = result.id;
+                document.getElementById('llm-panel').style.display = 'block';
+                document.getElementById('llm-analyze-btn').disabled = !llmAvailable;
+                document.getElementById('llm-chat-send-btn').disabled = !llmAvailable;
+            } else if (result.prediction_id) {
+                currentPredictionId = result.prediction_id;
+                document.getElementById('llm-panel').style.display = 'block';
+                document.getElementById('llm-analyze-btn').disabled = !llmAvailable;
+                document.getElementById('llm-chat-send-btn').disabled = !llmAvailable;
+            }
+            
+            try {
+                const chartData = JSON.parse(result.chart);
+                Plotly.newPlot('chart', chartData.data, chartData.layout);
+                
+                // Display appropriate table based on prediction mode
+                if (predictionMode === 'future' || !result.has_comparison) {
+                    document.getElementById('comparison-section').style.display = 'none';
+                    displayPredictionTable(result);
+                } else {
+                    document.getElementById('prediction-table-section').style.display = 'none';
+                    displayComparisonAnalysis(result);
+                }
+                
+                console.log('=== 预测结果显示完成 ===');
+            } catch (e) {
+                console.error('图表渲染错误:', e);
+                showStatus('error', '图表渲染失败: ' + e.message);
+            }
+        }
+
+        // Display prediction results table (for future prediction)
+        function displayPredictionTable(result) {
+            document.getElementById('prediction-table-section').style.display = 'block';
+            
+            // Update prediction info
+            document.getElementById('future-prediction-type').textContent = result.prediction_type;
+            
+            const predictions = result.prediction_results;
+            if (predictions.length > 0) {
+                const startTime = predictions[0].timestamp;
+                const endTime = predictions[predictions.length - 1].timestamp;
+                document.getElementById('prediction-time-range').textContent = `${startTime.split('T')[0]} 至 ${endTime.split('T')[0]}`;
+            }
+            
+            // Fill prediction table
+            fillPredictionTable(predictions);
+        }
+
+        // Fill prediction table
+        function fillPredictionTable(predictions) {
+            const tbody = document.getElementById('prediction-tbody');
+            tbody.innerHTML = '';
+            
+            const basePrice = predictions.length > 0 ? predictions[0].close : 0;
+            
+            for (let i = 0; i < predictions.length; i++) {
+                const pred = predictions[i];
+                const changePercent = i === 0 ? 0 : ((pred.close - predictions[i-1].close) / predictions[i-1].close * 100);
+                
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${i + 1}</td>
+                    <td>${pred.timestamp.split('T')[0]}</td>
+                    <td>${pred.open.toFixed(2)}</td>
+                    <td>${pred.high.toFixed(2)}</td>
+                    <td>${pred.low.toFixed(2)}</td>
+                    <td>${pred.close.toFixed(2)}</td>
+                    <td style="color: ${changePercent >= 0 ? '#26A69A' : '#EF5350'}">${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%</td>
+                `;
+                tbody.appendChild(row);
             }
         }
 
@@ -1188,16 +1670,10 @@
 
         // Set up event listeners
         function setupEventListeners() {
-            // Load model button
             document.getElementById('load-model-btn').addEventListener('click', loadModel);
-            
-            // Load data button
             document.getElementById('load-data-btn').addEventListener('click', loadData);
-            
-            // Prediction button
             document.getElementById('predict-btn').addEventListener('click', startPrediction);
             
-            // Prediction quality parameter sliders
             document.getElementById('temperature').addEventListener('input', function() {
                 document.getElementById('temperature-value').textContent = this.value;
             });
@@ -1206,9 +1682,19 @@
                 document.getElementById('top-p-value').textContent = this.value;
             });
             
-            // Update slider when lookback window size changes
             document.getElementById('lookback').addEventListener('input', updateSliderFromInputs);
             document.getElementById('pred-len').addEventListener('input', updateSliderFromInputs);
+            
+            // History panel buttons
+            document.getElementById('load-history-btn').addEventListener('click', loadPredictionHistory);
+            document.getElementById('compare-btn').addEventListener('click', compareSelectedPredictions);
+            
+            // LLM panel buttons
+            document.getElementById('llm-analyze-btn').addEventListener('click', startLLMAnalysis);
+            document.getElementById('llm-chat-send-btn').addEventListener('click', sendLLMChat);
+            document.getElementById('llm-chat-input').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') sendLLMChat();
+            });
         }
 
         // Display status information
@@ -1231,6 +1717,312 @@
                 loadingDiv.classList.add('show');
             } else {
                 loadingDiv.classList.remove('show');
+            }
+        }
+        
+        // ========== History Functions ==========
+        
+        async function loadPredictionHistory() {
+            try {
+                const response = await axios.get('/api/predictions/history');
+                if (response.data.success) {
+                    predictionHistory = response.data.history;
+                    displayHistoryList(predictionHistory);
+                }
+            } catch (error) {
+                console.error('加载历史记录失败:', error);
+                showStatus('error', '加载历史记录失败');
+            }
+        }
+        
+        function displayHistoryList(history) {
+            const historyList = document.getElementById('history-list');
+            
+            if (history.length === 0) {
+                historyList.innerHTML = '<p>暂无历史记录</p>';
+                return;
+            }
+            
+            historyList.innerHTML = '';
+            history.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'history-item';
+                div.dataset.id = item.id;
+                
+                div.innerHTML = `
+                    <input type="checkbox" class="history-item-checkbox" data-id="${item.id}">
+                    <div class="history-item-info">
+                        <div class="history-item-title">${item.file_name} - ${item.prediction_type}</div>
+                        <div class="history-item-meta">
+                            模型: ${item.model} | 回看: ${item.lookback} | 预测: ${item.pred_len} | 
+                            T: ${item.temperature} | 时间: ${item.created_at}
+                        </div>
+                    </div>
+                    <div class="history-item-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="viewPrediction(${item.id})">查看</button>
+                        <button class="btn btn-danger btn-sm" onclick="deletePrediction(${item.id})">删除</button>
+                    </div>
+                `;
+                
+                div.querySelector('.history-item-checkbox').addEventListener('change', function() {
+                    toggleHistorySelection(item.id, this.checked);
+                });
+                
+                historyList.appendChild(div);
+            });
+        }
+        
+        function toggleHistorySelection(id, selected) {
+            if (selected) {
+                if (!selectedHistoryItems.includes(id)) {
+                    selectedHistoryItems.push(id);
+                }
+            } else {
+                selectedHistoryItems = selectedHistoryItems.filter(i => i !== id);
+            }
+            
+            document.getElementById('compare-btn').disabled = selectedHistoryItems.length < 2;
+        }
+        
+        async function viewPrediction(id) {
+            try {
+                showLoading(true);
+                const response = await axios.get(`/api/predictions/${id}`);
+                if (response.data.success) {
+                    const prediction = response.data.prediction;
+                    currentPredictionId = id;
+                    displayPredictionResult(prediction, prediction.prediction_mode);
+                    document.getElementById('llm-panel').style.display = 'block';
+                    document.getElementById('llm-analyze-btn').disabled = !llmAvailable;
+                    document.getElementById('llm-chat-send-btn').disabled = !llmAvailable;
+                    loadLLMChatHistory(id);
+                    
+                    // 滚动到图表区域
+                    document.querySelector('.chart-container').scrollIntoView({ behavior: 'smooth' });
+                    showStatus('success', `已加载预测记录 #${id}`);
+                }
+            } catch (error) {
+                console.error('加载预测详情失败:', error);
+                showStatus('error', '加载预测详情失败: ' + (error.response?.data?.error || error.message));
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        async function deletePrediction(id) {
+            if (!confirm('确定删除此预测记录？')) return;
+            
+            try {
+                await axios.delete(`/api/predictions/${id}`);
+                showStatus('success', '预测记录已删除');
+                loadPredictionHistory();
+            } catch (error) {
+                console.error('删除失败:', error);
+                showStatus('error', '删除失败');
+            }
+        }
+        
+        async function compareSelectedPredictions() {
+            if (selectedHistoryItems.length < 2) {
+                showStatus('error', '请至少选择2条记录');
+                return;
+            }
+            
+            try {
+                showLoading(true);
+                const response = await axios.post('/api/predictions/compare', {
+                    prediction_ids: selectedHistoryItems
+                });
+                
+                if (response.data.success) {
+                    displayComparisonChart(response.data);
+                    showStatus('success', '对比完成');
+                }
+            } catch (error) {
+                console.error('对比失败:', error);
+                showStatus('error', '对比失败');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function displayComparisonChart(data) {
+            document.getElementById('comparison-chart-section').style.display = 'block';
+            
+            const chartData = JSON.parse(data.chart);
+            Plotly.newPlot('comparison-chart', chartData.data, chartData.layout);
+            
+            // Display comparison table
+            const headRow = document.createElement('tr');
+            headRow.innerHTML = '<th>时间</th>';
+            data.predictions.forEach(p => {
+                headRow.innerHTML += `<th>预测#${p.id}</th>`;
+            });
+            document.getElementById('comparison-detail-head').innerHTML = '';
+            document.getElementById('comparison-detail-head').appendChild(headRow);
+            
+            const tbody = document.getElementById('comparison-detail-body');
+            tbody.innerHTML = '';
+            data.comparison_data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${row.timestamp.split('T')[0]}</td>`;
+                data.predictions.forEach(p => {
+                    const val = row[`预测#${p.id}`];
+                    tr.innerHTML += `<td>${val ? val.toFixed(2) : '-'}</td>`;
+                });
+                tbody.appendChild(tr);
+            });
+        }
+        
+        // ========== LLM Functions ==========
+        
+        async function checkLLMStatus() {
+            try {
+                const response = await axios.get('/api/llm/status');
+                llmAvailable = response.data.available;
+                const provider = response.data.provider || 'openai';
+                const model = response.data.model || 'unknown';
+                document.getElementById('llm-available-status').textContent = 
+                    llmAvailable ? `已配置 (${provider}: ${model})` : '未配置 (请检查webui/.env文件)';
+            } catch (error) {
+                console.error('检查LLM状态失败:', error);
+                document.getElementById('llm-available-status').textContent = '检测失败';
+            }
+        }
+        
+        async function startLLMAnalysis() {
+            if (!currentPredictionId) {
+                showStatus('error', '请先选择一条预测记录');
+                return;
+            }
+            
+            const analysisType = document.getElementById('llm-analysis-type').value;
+            
+            try {
+                showLoading(true);
+                document.getElementById('llm-analyze-btn').disabled = true;
+                
+                let requestData = { prediction_id: currentPredictionId, analysis_type: analysisType };
+                if (analysisType === 'parameter') {
+                    requestData.prediction_ids = selectedHistoryItems.length > 0 ? selectedHistoryItems : [currentPredictionId];
+                }
+                
+                const response = await axios.post('/api/llm/analyze', requestData);
+                
+                if (response.data.success) {
+                    document.getElementById('llm-analysis-result').style.display = 'block';
+                    
+                    // 使用marked渲染Markdown
+                    const markdownContent = response.data.content;
+                    const htmlContent = marked.parse(markdownContent);
+                    document.getElementById('llm-analysis-content').innerHTML = htmlContent;
+                    
+                    // 确保展开面板
+                    document.getElementById('llm-analysis-content').classList.add('expanded');
+                    document.getElementById('analysis-toggle').textContent = '收起 ▲';
+                    
+                    showStatus('success', '分析完成');
+                } else {
+                    showStatus('error', response.data.error || '分析失败');
+                }
+            } catch (error) {
+                console.error('LLM分析失败:', error);
+                showStatus('error', 'LLM分析失败: ' + (error.response?.data?.error || error.message));
+            } finally {
+                showLoading(false);
+                document.getElementById('llm-analyze-btn').disabled = !llmAvailable;
+            }
+        }
+        
+        async function sendLLMChat() {
+            if (!currentPredictionId) {
+                showStatus('error', '请先选择一条预测记录');
+                return;
+            }
+            
+            const input = document.getElementById('llm-chat-input');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            try {
+                document.getElementById('llm-chat-send-btn').disabled = true;
+                input.value = '';
+                
+                addChatMessage('user', message);
+                
+                const response = await axios.post('/api/llm/chat', {
+                    prediction_id: currentPredictionId,
+                    message: message
+                });
+                
+                if (response.data.success) {
+                    addChatMessage('assistant', response.data.response);
+                } else {
+                    showStatus('error', response.data.error || '对话失败');
+                }
+            } catch (error) {
+                console.error('LLM对话失败:', error);
+                showStatus('error', 'LLM对话失败');
+            } finally {
+                document.getElementById('llm-chat-send-btn').disabled = !llmAvailable;
+            }
+        }
+        
+        function addChatMessage(role, content) {
+            const historyDiv = document.getElementById('llm-chat-history');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `chat-message ${role}`;
+            
+            // 对assistant消息使用Markdown渲染
+            if (role === 'assistant') {
+                msgDiv.innerHTML = marked.parse(content);
+            } else {
+                msgDiv.textContent = content;
+            }
+            
+            historyDiv.appendChild(msgDiv);
+            historyDiv.scrollTop = historyDiv.scrollHeight;
+        }
+        
+        function toggleAnalysisPanel() {
+            const content = document.getElementById('llm-analysis-content');
+            const toggle = document.getElementById('analysis-toggle');
+            
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                toggle.textContent = '展开 ▼';
+            } else {
+                content.classList.add('expanded');
+                toggle.textContent = '收起 ▲';
+            }
+        }
+        
+        function toggleChatPanel() {
+            const content = document.getElementById('llm-chat-content');
+            const toggle = document.getElementById('chat-toggle');
+            
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                toggle.textContent = '展开 ▼';
+            } else {
+                content.classList.add('expanded');
+                toggle.textContent = '收起 ▲';
+            }
+        }
+        
+        async function loadLLMChatHistory(predictionId) {
+            try {
+                const response = await axios.get(`/api/llm/history/${predictionId}`);
+                if (response.data.success) {
+                    const historyDiv = document.getElementById('llm-chat-history');
+                    historyDiv.innerHTML = '';
+                    response.data.chat_history.forEach(chat => {
+                        addChatMessage(chat.role, chat.message);
+                    });
+                }
+            } catch (error) {
+                console.error('加载对话历史失败:', error);
             }
         }
     </script>

@@ -11,7 +11,9 @@ import warnings
 import datetime
 warnings.filterwarnings('ignore')
 
-# Add project root directory to path
+# Set HuggingFace mirror for China
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
@@ -20,6 +22,9 @@ try:
 except ImportError:
     MODEL_AVAILABLE = False
     print("Warning: Kronos model cannot be imported, will use simulated data for demonstration")
+
+from db import save_prediction, get_predictions_history, get_prediction_by_id, get_predictions_by_ids, delete_prediction, save_llm_analysis, get_llm_analysis, save_chat_message, get_chat_history
+from llm_service import analyze_trend, analyze_parameter_impact, chat_with_context, check_llm_available, get_llm_config
 
 app = Flask(__name__)
 CORS(app)
@@ -225,12 +230,12 @@ def create_prediction_chart(df, pred_df, lookback, pred_len, actual_df=None, his
     
     # Add historical data (candlestick chart)
     fig.add_trace(go.Candlestick(
-        x=historical_df['timestamps'] if 'timestamps' in historical_df.columns else historical_df.index,
-        open=historical_df['open'],
-        high=historical_df['high'],
-        low=historical_df['low'],
-        close=historical_df['close'],
-        name='Historical Data (400 data points)',
+        x=list(historical_df['timestamps']) if 'timestamps' in historical_df.columns else list(historical_df.index),
+        open=list(historical_df['open']),
+        high=list(historical_df['high']),
+        low=list(historical_df['low']),
+        close=list(historical_df['close']),
+        name='历史数据',
         increasing_line_color='#26A69A',
         decreasing_line_color='#EF5350'
     ))
@@ -253,12 +258,12 @@ def create_prediction_chart(df, pred_df, lookback, pred_len, actual_df=None, his
             pred_timestamps = range(len(historical_df), len(historical_df) + len(pred_df))
         
         fig.add_trace(go.Candlestick(
-            x=pred_timestamps,
-            open=pred_df['open'],
-            high=pred_df['high'],
-            low=pred_df['low'],
-            close=pred_df['close'],
-            name='Prediction Data (120 data points)',
+            x=list(pred_timestamps),
+            open=list(pred_df['open']),
+            high=list(pred_df['high']),
+            low=list(pred_df['low']),
+            close=list(pred_df['close']),
+            name='预测数据',
             increasing_line_color='#66BB6A',
             decreasing_line_color='#FF7043'
         ))
@@ -286,25 +291,53 @@ def create_prediction_chart(df, pred_df, lookback, pred_len, actual_df=None, his
             actual_timestamps = range(len(historical_df), len(historical_df) + len(actual_df))
         
         fig.add_trace(go.Candlestick(
-            x=actual_timestamps,
-            open=actual_df['open'],
-            high=actual_df['high'],
-            low=actual_df['low'],
-            close=actual_df['close'],
-            name='Actual Data (120 data points)',
+            x=list(actual_timestamps),
+            open=list(actual_df['open']),
+            high=list(actual_df['high']),
+            low=list(actual_df['low']),
+            close=list(actual_df['close']),
+            name='实际数据',
             increasing_line_color='#FF9800',
             decreasing_line_color='#F44336'
         ))
     
     # Update layout
     fig.update_layout(
-        title='Kronos Financial Prediction Results - 400 Historical Points + 120 Prediction Points vs 120 Actual Points',
-        xaxis_title='Time',
-        yaxis_title='Price',
+        title='Kronos 金融预测结果',
+        xaxis_title='时间',
+        yaxis_title='价格',
         template='plotly_white',
         height=600,
-        showlegend=True
+        showlegend=True,
+        xaxis_rangeslider_visible=False
     )
+    
+    fig.update_xaxes(type='date')
+    fig.update_yaxes(fixedrange=False)
+    
+    # Set Y-axis range based on all price data
+    all_prices = []
+    if len(historical_df) > 0:
+        all_prices.extend(historical_df['open'].tolist())
+        all_prices.extend(historical_df['high'].tolist())
+        all_prices.extend(historical_df['low'].tolist())
+        all_prices.extend(historical_df['close'].tolist())
+    if pred_df is not None and len(pred_df) > 0:
+        all_prices.extend(pred_df['open'].tolist())
+        all_prices.extend(pred_df['high'].tolist())
+        all_prices.extend(pred_df['low'].tolist())
+        all_prices.extend(pred_df['close'].tolist())
+    if actual_df is not None and len(actual_df) > 0:
+        all_prices.extend(actual_df['open'].tolist())
+        all_prices.extend(actual_df['high'].tolist())
+        all_prices.extend(actual_df['low'].tolist())
+        all_prices.extend(actual_df['close'].tolist())
+    
+    if all_prices:
+        min_price = min(all_prices)
+        max_price = max(all_prices)
+        padding = (max_price - min_price) * 0.1
+        fig.update_yaxes(range=[min_price - padding, max_price + padding])
     
     # Ensure x-axis time continuity
     if 'timestamps' in historical_df.columns:
@@ -325,7 +358,7 @@ def create_prediction_chart(df, pred_df, lookback, pred_len, actual_df=None, his
                 type='date'
             )
     
-    return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+    return fig.to_json()
 
 @app.route('/')
 def index():
@@ -407,8 +440,9 @@ def predict():
     try:
         data = request.get_json()
         file_path = data.get('file_path')
-        lookback = int(data.get('lookback', 400))
-        pred_len = int(data.get('pred_len', 120))
+        lookback = int(data.get('lookback', 200))
+        pred_len = int(data.get('pred_len', 60))
+        prediction_mode = data.get('prediction_mode', 'future')
         
         # Get prediction quality parameters
         temperature = float(data.get('temperature', 1.0))
@@ -416,7 +450,7 @@ def predict():
         sample_count = int(data.get('sample_count', 1))
         
         if not file_path:
-            return jsonify({'error': 'File path cannot be empty'}), 400
+            return jsonify({'error': '文件路径不能为空'}), 400
         
         # Load data
         df, error = load_data_file(file_path)
@@ -424,53 +458,52 @@ def predict():
             return jsonify({'error': error}), 400
         
         if len(df) < lookback:
-            return jsonify({'error': f'Insufficient data length, need at least {lookback} rows'}), 400
+            return jsonify({'error': f'数据不足，至少需要 {lookback} 条数据'}), 400
         
         # Perform prediction
         if MODEL_AVAILABLE and predictor is not None:
             try:
                 # Use real Kronos model
-                # Only use necessary columns: OHLCV, excluding amount
                 required_cols = ['open', 'high', 'low', 'close']
                 if 'volume' in df.columns:
                     required_cols.append('volume')
                 
-                # Process time period selection
                 start_date = data.get('start_date')
                 
-                if start_date:
-                    # Custom time period - fix logic: use data within selected window
-                    start_dt = pd.to_datetime(start_date)
+                if prediction_mode == 'future' or not start_date or not start_date.strip():
+                    # Predict future - use latest data
+                    x_df = df.iloc[-lookback:][required_cols]
+                    x_timestamp = df.iloc[-lookback:]['timestamps']
                     
-                    # Find data after start time
+                    last_timestamp = df['timestamps'].iloc[-1]
+                    time_diff = df['timestamps'].iloc[1] - df['timestamps'].iloc[0] if len(df) > 1 else pd.Timedelta(days=1)
+                    y_timestamp = pd.date_range(
+                        start=last_timestamp + time_diff,
+                        periods=pred_len,
+                        freq=time_diff
+                    )
+                    y_timestamp = pd.Series(y_timestamp, name='timestamps')
+                    
+                    prediction_type = f"预测未来{pred_len}天（基于最近{lookback}天数据）"
+                    historical_start_idx = len(df) - lookback
+                    
+                else:
+                    # Historical comparison - use selected time window
+                    start_dt = pd.to_datetime(start_date)
                     mask = df['timestamps'] >= start_dt
                     time_range_df = df[mask]
                     
-                    # Ensure sufficient data: lookback + pred_len
                     if len(time_range_df) < lookback + pred_len:
-                        return jsonify({'error': f'Insufficient data from start time {start_dt.strftime("%Y-%m-%d %H:%M")}, need at least {lookback + pred_len} data points, currently only {len(time_range_df)} available'}), 400
+                        return jsonify({'error': f'从选定时间 {start_dt.strftime("%Y-%m-%d")} 开始数据不足，需要 {lookback + pred_len} 条，仅有 {len(time_range_df)} 条'}), 400
                     
-                    # Use first lookback data points within selected window for prediction
                     x_df = time_range_df.iloc[:lookback][required_cols]
                     x_timestamp = time_range_df.iloc[:lookback]['timestamps']
-                    
-                    # Use last pred_len data points within selected window as actual values
                     y_timestamp = time_range_df.iloc[lookback:lookback+pred_len]['timestamps']
                     
-                    # Calculate actual time period length
-                    start_timestamp = time_range_df['timestamps'].iloc[0]
-                    end_timestamp = time_range_df['timestamps'].iloc[lookback+pred_len-1]
-                    time_span = end_timestamp - start_timestamp
-                    
-                    prediction_type = f"Kronos model prediction (within selected window: first {lookback} data points for prediction, last {pred_len} data points for comparison, time span: {time_span})"
-                else:
-                    # Use latest data
-                    x_df = df.iloc[:lookback][required_cols]
-                    x_timestamp = df.iloc[:lookback]['timestamps']
-                    y_timestamp = df.iloc[lookback:lookback+pred_len]['timestamps']
-                    prediction_type = "Kronos model prediction (latest data)"
+                    prediction_type = f"历史对比验证（{lookback}条历史 + {pred_len}条对比）"
+                    historical_start_idx = df[mask].index[0] if len(df[mask]) > 0 else 0
                 
-                # Ensure timestamps are Series format, not DatetimeIndex, to avoid .dt attribute error in Kronos model
+                # Ensure timestamps are Series format, not DatetimeIndex
                 if isinstance(x_timestamp, pd.DatetimeIndex):
                     x_timestamp = pd.Series(x_timestamp, name='timestamps')
                 if isinstance(y_timestamp, pd.DatetimeIndex):
@@ -487,44 +520,22 @@ def predict():
                 )
                 
             except Exception as e:
-                return jsonify({'error': f'Kronos model prediction failed: {str(e)}'}), 500
+                return jsonify({'error': f'模型预测失败: {str(e)}'}), 500
         else:
-            return jsonify({'error': 'Kronos model not loaded, please load model first'}), 400
+            return jsonify({'error': '模型未加载，请先加载模型'}), 400
         
-        # Prepare actual data for comparison (if exists)
+        # Prepare actual data for comparison (only for historical comparison mode)
         actual_data = []
         actual_df = None
         
-        if start_date:  # Custom time period
-            # Fix logic: use data within selected window
-            # Prediction uses first 400 data points within selected window
-            # Actual data should be last 120 data points within selected window
+        if prediction_mode == 'historical' and start_date and start_date.strip():
             start_dt = pd.to_datetime(start_date)
-            
-            # Find data starting from start_date
             mask = df['timestamps'] >= start_dt
             time_range_df = df[mask]
             
             if len(time_range_df) >= lookback + pred_len:
-                # Get last 120 data points within selected window as actual values
                 actual_df = time_range_df.iloc[lookback:lookback+pred_len]
-                
-                for i, (_, row) in enumerate(actual_df.iterrows()):
-                    actual_data.append({
-                        'timestamp': row['timestamps'].isoformat(),
-                        'open': float(row['open']),
-                        'high': float(row['high']),
-                        'low': float(row['low']),
-                        'close': float(row['close']),
-                        'volume': float(row['volume']) if 'volume' in row else 0,
-                        'amount': float(row['amount']) if 'amount' in row else 0
-                    })
-        else:  # Latest data
-            # Prediction uses first 400 data points
-            # Actual data should be 120 data points after first 400 data points
-            if len(df) >= lookback + pred_len:
-                actual_df = df.iloc[lookback:lookback+pred_len]
-                for i, (_, row) in enumerate(actual_df.iterrows()):
+                for _, row in actual_df.iterrows():
                     actual_data.append({
                         'timestamp': row['timestamps'].isoformat(),
                         'open': float(row['open']),
@@ -535,53 +546,22 @@ def predict():
                         'amount': float(row['amount']) if 'amount' in row else 0
                     })
         
-        # Create chart - pass historical data start position
-        if start_date:
-            # Custom time period: find starting position of historical data in original df
-            start_dt = pd.to_datetime(start_date)
-            mask = df['timestamps'] >= start_dt
-            historical_start_idx = df[mask].index[0] if len(df[mask]) > 0 else 0
-        else:
-            # Latest data: start from beginning
-            historical_start_idx = 0
-        
+        # Create chart
         chart_json = create_prediction_chart(df, pred_df, lookback, pred_len, actual_df, historical_start_idx)
         
-        # Prepare prediction result data - fix timestamp calculation logic
-        if 'timestamps' in df.columns:
-            if start_date:
-                # Custom time period: use selected window data to calculate timestamps
-                start_dt = pd.to_datetime(start_date)
-                mask = df['timestamps'] >= start_dt
-                time_range_df = df[mask]
-                
-                if len(time_range_df) >= lookback:
-                    # Calculate prediction timestamps starting from last time point of selected window
-                    last_timestamp = time_range_df['timestamps'].iloc[lookback-1]
-                    time_diff = df['timestamps'].iloc[1] - df['timestamps'].iloc[0]
-                    future_timestamps = pd.date_range(
-                        start=last_timestamp + time_diff,
-                        periods=pred_len,
-                        freq=time_diff
-                    )
-                else:
-                    future_timestamps = []
-            else:
-                # Latest data: calculate from last time point of entire data file
-                last_timestamp = df['timestamps'].iloc[-1]
-                time_diff = df['timestamps'].iloc[1] - df['timestamps'].iloc[0]
-                future_timestamps = pd.date_range(
-                    start=last_timestamp + time_diff,
-                    periods=pred_len,
-                    freq=time_diff
-                )
-        else:
-            future_timestamps = range(len(df), len(df) + pred_len)
-        
+        # Prepare prediction results with timestamps
         prediction_results = []
+        
+        # Use y_timestamp as prediction timestamps
+        if isinstance(y_timestamp, pd.Series):
+            pred_timestamps = y_timestamp.tolist()
+        else:
+            pred_timestamps = list(y_timestamp)
+        
         for i, (_, row) in enumerate(pred_df.iterrows()):
+            ts = pred_timestamps[i] if i < len(pred_timestamps) else f"T{i}"
             prediction_results.append({
-                'timestamp': future_timestamps[i].isoformat() if i < len(future_timestamps) else f"T{i}",
+                'timestamp': ts.isoformat() if hasattr(ts, 'isoformat') else str(ts),
                 'open': float(row['open']),
                 'high': float(row['high']),
                 'low': float(row['low']),
@@ -590,34 +570,45 @@ def predict():
                 'amount': float(row['amount']) if 'amount' in row else 0
             })
         
-        # Save prediction results to file
-        try:
-            save_prediction_results(
-                file_path=file_path,
-                prediction_type=prediction_type,
-                prediction_results=prediction_results,
-                actual_data=actual_data,
-                input_data=x_df,
-                prediction_params={
-                    'lookback': lookback,
-                    'pred_len': pred_len,
-                    'temperature': temperature,
-                    'top_p': top_p,
-                    'sample_count': sample_count,
-                    'start_date': start_date if start_date else 'latest'
-                }
-            )
-        except Exception as e:
-            print(f"Failed to save prediction results: {e}")
+        file_name = os.path.basename(file_path)
+        timestamps_data = [ts.isoformat() if hasattr(ts, 'isoformat') else str(ts) for ts in y_timestamp]
+        input_start_time = x_timestamp.iloc[0].isoformat() if len(x_timestamp) > 0 else ''
+        input_end_time = x_timestamp.iloc[-1].isoformat() if len(x_timestamp) > 0 else ''
+        
+        current_model_name = 'unknown'
+        if predictor is not None:
+            for key, config in AVAILABLE_MODELS.items():
+                if config['tokenizer_id'] in str(type(tokenizer)):
+                    current_model_name = config['name']
+                    break
+        
+        prediction_id = save_prediction(
+            file_path=file_path,
+            file_name=file_name,
+            model=current_model_name,
+            lookback=lookback,
+            pred_len=pred_len,
+            temperature=temperature,
+            top_p=top_p,
+            sample_count=sample_count,
+            prediction_mode=prediction_mode,
+            prediction_type=prediction_type,
+            predictions_data=prediction_results,
+            timestamps_data=timestamps_data,
+            actual_data=actual_data,
+            input_start_time=input_start_time,
+            input_end_time=input_end_time
+        )
         
         return jsonify({
             'success': True,
+            'prediction_id': prediction_id,
             'prediction_type': prediction_type,
             'chart': chart_json,
             'prediction_results': prediction_results,
             'actual_data': actual_data,
             'has_comparison': len(actual_data) > 0,
-            'message': f'Prediction completed, generated {pred_len} prediction points' + (f', including {len(actual_data)} actual data points for comparison' if len(actual_data) > 0 else '')
+            'message': f'预测完成，生成 {pred_len} 个预测点' + (f'，包含 {len(actual_data)} 个实际数据用于对比' if len(actual_data) > 0 else '')
         })
         
     except Exception as e:
@@ -697,6 +688,272 @@ def get_model_status():
             'message': 'Kronos model library not available, please install related dependencies'
         })
 
+@app.route('/api/predictions/history')
+def get_prediction_history():
+    """获取预测历史记录"""
+    try:
+        limit = int(request.args.get('limit', 50))
+        history = get_predictions_history(limit)
+        return jsonify({'success': True, 'history': history})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/predictions/<int:prediction_id>')
+def get_prediction_detail(prediction_id):
+    """获取单条预测详情"""
+    try:
+        prediction = get_prediction_by_id(prediction_id)
+        if prediction is None:
+            return jsonify({'error': '预测记录不存在'}), 404
+        
+        # 为历史记录重新生成图表
+        chart_json = create_chart_from_stored_data(prediction)
+        prediction['chart'] = chart_json
+        
+        return jsonify({'success': True, 'prediction': prediction})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def create_chart_from_stored_data(prediction):
+    """从存储的预测数据生成图表"""
+    fig = go.Figure()
+    
+    predictions = prediction['predictions_data']
+    timestamps = prediction['timestamps_data']
+    actual_data = prediction['actual_data']
+    
+    # 添加预测数据曲线
+    if predictions and len(predictions) > 0:
+        closes = [p['close'] for p in predictions]
+        
+        fig.add_trace(go.Scatter(
+            x=timestamps,
+            y=closes,
+            mode='lines+markers',
+            name='预测收盘价',
+            line=dict(color='#2196F3', width=2),
+            marker=dict(size=4)
+        ))
+        
+        # 添加开盘价、最高价、最低价
+        opens = [p['open'] for p in predictions]
+        highs = [p['high'] for p in predictions]
+        lows = [p['low'] for p in predictions]
+        
+        fig.add_trace(go.Scatter(
+            x=timestamps,
+            y=highs,
+            mode='lines',
+            name='预测最高价',
+            line=dict(color='#4CAF50', width=1, dash='dot'),
+            showlegend=True
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=timestamps,
+            y=lows,
+            mode='lines',
+            name='预测最低价',
+            line=dict(color='#EF5350', width=1, dash='dot'),
+            showlegend=True
+        ))
+    
+    # 添加实际数据曲线（如果有）
+    if actual_data and len(actual_data) > 0:
+        actual_timestamps = [a['timestamp'] for a in actual_data]
+        actual_closes = [a['close'] for a in actual_data]
+        
+        fig.add_trace(go.Scatter(
+            x=actual_timestamps,
+            y=actual_closes,
+            mode='lines+markers',
+            name='实际收盘价',
+            line=dict(color='#FF9800', width=2),
+            marker=dict(size=4)
+        ))
+    
+    # 设置图表布局
+    title = f"预测记录 #{prediction['id']} - {prediction['prediction_type']}"
+    fig.update_layout(
+        title=title,
+        xaxis_title='时间',
+        yaxis_title='价格',
+        template='plotly_white',
+        height=500,
+        showlegend=True,
+        hovermode='x unified'
+    )
+    
+    # 计算Y轴范围
+    all_prices = []
+    if predictions:
+        all_prices.extend([p['open'] for p in predictions])
+        all_prices.extend([p['high'] for p in predictions])
+        all_prices.extend([p['low'] for p in predictions])
+        all_prices.extend([p['close'] for p in predictions])
+    if actual_data:
+        all_prices.extend([a['open'] for a in actual_data])
+        all_prices.extend([a['high'] for a in actual_data])
+        all_prices.extend([a['low'] for a in actual_data])
+        all_prices.extend([a['close'] for a in actual_data])
+    
+    if all_prices:
+        min_price = min(all_prices)
+        max_price = max(all_prices)
+        padding = (max_price - min_price) * 0.1
+        fig.update_yaxes(range=[min_price - padding, max_price + padding])
+    
+    return fig.to_json()
+
+@app.route('/api/predictions/<int:prediction_id>', methods=['DELETE'])
+def delete_prediction_record(prediction_id):
+    """删除预测记录"""
+    try:
+        delete_prediction(prediction_id)
+        return jsonify({'success': True, 'message': '预测记录已删除'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/predictions/compare', methods=['POST'])
+def compare_predictions():
+    """对比多次预测结果"""
+    try:
+        data = request.get_json()
+        prediction_ids = data.get('prediction_ids', [])
+        
+        if len(prediction_ids) < 2:
+            return jsonify({'error': '至少需要2条预测记录进行对比'}), 400
+        
+        predictions = get_predictions_by_ids(prediction_ids)
+        
+        if len(predictions) < 2:
+            return jsonify({'error': '未找到足够的预测记录'}), 404
+        
+        fig = go.Figure()
+        colors = ['#2196F3', '#4CAF50', '#FF9800', '#E91E63', '#9C27B0', '#00BCD4']
+        
+        for i, pred in enumerate(predictions):
+            closes = [p['close'] for p in pred['predictions_data']]
+            timestamps = pred['timestamps_data']
+            
+            fig.add_trace(go.Scatter(
+                x=timestamps,
+                y=closes,
+                mode='lines+markers',
+                name=f"预测#{pred['id']} ({pred['model']}, T={pred.get('temperature', 1.0)})",
+                line=dict(color=colors[i % len(colors)], width=2),
+                marker=dict(size=4)
+            ))
+        
+        fig.update_layout(
+            title='预测结果对比',
+            xaxis_title='时间',
+            yaxis_title='收盘价',
+            template='plotly_white',
+            height=500,
+            showlegend=True,
+            hovermode='x unified'
+        )
+        
+        comparison_data = []
+        timestamps_common = predictions[0]['timestamps_data']
+        for i, ts in enumerate(timestamps_common):
+            row = {'timestamp': ts}
+            for pred in predictions:
+                if i < len(pred['predictions_data']):
+                    row[f'预测#{pred["id"]}'] = pred['predictions_data'][i]['close']
+            comparison_data.append(row)
+        
+        return jsonify({
+            'success': True,
+            'chart': fig.to_json(),
+            'predictions': predictions,
+            'comparison_data': comparison_data
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/llm/status')
+def get_llm_status():
+    """获取LLM服务状态"""
+    return jsonify(get_llm_config())
+
+@app.route('/api/llm/analyze', methods=['POST'])
+def llm_analyze():
+    """LLM金融分析"""
+    try:
+        data = request.get_json()
+        prediction_id = data.get('prediction_id')
+        analysis_type = data.get('analysis_type', 'trend')
+        
+        if prediction_id is None:
+            return jsonify({'error': '缺少prediction_id'}), 400
+        
+        prediction = get_prediction_by_id(prediction_id)
+        if prediction is None:
+            return jsonify({'error': '预测记录不存在'}), 404
+        
+        if analysis_type == 'trend':
+            content = analyze_trend(prediction['predictions_data'], prediction['actual_data'])
+        elif analysis_type == 'parameter':
+            prediction_ids = data.get('prediction_ids', [prediction_id])
+            predictions = get_predictions_by_ids(prediction_ids)
+            content = analyze_parameter_impact(predictions)
+        else:
+            return jsonify({'error': '不支持的分析类型'}), 400
+        
+        save_llm_analysis(prediction_id, analysis_type, content)
+        
+        return jsonify({
+            'success': True,
+            'analysis_type': analysis_type,
+            'content': content
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/llm/chat', methods=['POST'])
+def llm_chat():
+    """LLM金融对话"""
+    try:
+        data = request.get_json()
+        prediction_id = data.get('prediction_id')
+        message = data.get('message')
+        
+        if prediction_id is None or message is None:
+            return jsonify({'error': '缺少prediction_id或message'}), 400
+        
+        prediction = get_prediction_by_id(prediction_id)
+        if prediction is None:
+            return jsonify({'error': '预测记录不存在'}), 404
+        
+        chat_history = get_chat_history(prediction_id)
+        save_chat_message(prediction_id, 'user', message)
+        
+        response = chat_with_context(prediction, chat_history, message)
+        save_chat_message(prediction_id, 'assistant', response)
+        
+        return jsonify({
+            'success': True,
+            'response': response
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/llm/history/<int:prediction_id>')
+def get_llm_chat_history(prediction_id):
+    """获取LLM对话历史"""
+    try:
+        history = get_chat_history(prediction_id)
+        analyses = get_llm_analysis(prediction_id)
+        return jsonify({
+            'success': True,
+            'chat_history': history,
+            'analyses': analyses
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     print("Starting Kronos Web UI...")
     print(f"Model availability: {MODEL_AVAILABLE}")
@@ -705,4 +962,4 @@ if __name__ == '__main__':
     else:
         print("Tip: Will use simulated data for demonstration")
     
-    app.run(debug=True, host='0.0.0.0', port=7070)
+    app.run(debug=True, host='0.0.0.0', port=3005)
